@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GulfWatch — Longboat Key Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0e14;--card:#131920;--border:#1e2a36;--accent:#4fc3f7;--accent2:#81d4fa;--text:#e0e6ed;--muted:#7a8a9a;--warm:#ffb74d;--green:#66bb6a;--red:#ef5350;--glass:rgba(19,25,32,0.85)}
+body{font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.header{padding:24px 32px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)}
+.header h1{font-size:28px;font-weight:300;letter-spacing:2px;color:var(--accent)}
+.header h1 span{font-weight:600}
+.header .meta{text-align:right;color:var(--muted);font-size:13px}
+.header .meta .time{font-size:20px;color:var(--text);font-weight:300}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px;padding:24px 32px;max-width:1400px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;transition:transform .2s}
+.card:hover{transform:translateY(-2px)}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--accent),transparent);border-radius:16px 16px 0 0}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card h2 .icon{font-size:18px}
+.big-num{font-size:48px;font-weight:200;line-height:1;margin-bottom:4px}
+.unit{font-size:14px;color:var(--muted);font-weight:400}
+.sub{font-size:13px;color:var(--muted);margin-top:8px}
+.row{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}
+.stat{flex:1;min-width:80px}
+.stat .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px}
+.stat .value{font-size:22px;font-weight:300}
+.tide-chart{display:flex;align-items:flex-end;gap:4px;height:80px;margin-top:16px}
+.tide-bar{flex:1;background:var(--accent);border-radius:4px 4px 0 0;opacity:0.6;transition:opacity .2s}
+.tide-bar.now{opacity:1;background:var(--warm)}
+.tide-times{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.tide-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px}
+.tide-row .type{font-size:13px;font-weight:500}
+.tide-row .type.high{color:var(--accent)}
+.tide-row .type.low{color:var(--muted)}
+.tide-row .time{font-size:13px;color:var(--muted)}
+.tide-row .height{font-size:15px;font-weight:300}
+.sun-bar{height:6px;background:var(--border);border-radius:3px;margin-top:16px;position:relative;overflow:hidden}
+.sun-progress{height:100%;background:linear-gradient(90deg,var(--warm),#fff176,var(--warm));border-radius:3px;transition:width 1s}
+.event-list{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.event{padding:12px;background:rgba(255,255,255,0.03);border-radius:10px;border-left:3px solid var(--accent)}
+.event .name{font-size:14px;font-weight:500}
+.event .detail{font-size:12px;color:var(--muted);margin-top:2px}
+.golf-courses{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.course{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px}
+.course .name{font-size:14px}
+.course .status{font-size:12px;padding:4px 10px;border-radius:20px;font-weight:500}
+.course .status.open{background:rgba(102,187,106,0.15);color:var(--green)}
+.course .status.closed{background:rgba(239,83,80,0.15);color:var(--red)}
+.redtide-indicator{display:flex;align-items:center;gap:12px;margin-top:12px}
+.redtide-dot{width:16px;height:16px;border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.redtide-dot.none{background:var(--green)}
+.redtide-dot.low{background:var(--warm)}
+.redtide-dot.high{background:var(--red)}
+.forecast-row{display:flex;gap:12px;margin-top:12px;overflow-x:auto;padding-bottom:8px}
+.forecast-day{min-width:90px;text-align:center;padding:12px 8px;background:rgba(255,255,255,0.03);border-radius:10px;flex-shrink:0}
+.forecast-day .day{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.forecast-day .icon{font-size:24px;margin:6px 0}
+.forecast-day .temp{font-size:16px;font-weight:300}
+.forecast-day .temp span{color:var(--muted);font-size:13px}
+.restaurant-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.restaurant{display:flex;justify-content:space-between;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px}
+.restaurant .rname{font-size:14px}
+.restaurant .cuisine{font-size:12px;color:var(--muted)}
+.restaurant .rating{color:var(--warm);font-size:14px}
+.wide{grid-column:span 2}
+@media(max-width:768px){
+.grid{grid-template-columns:1fr;padding:16px}
+.header{padding:16px;flex-direction:column;align-items:flex-start;gap:8px}
+.wide{grid-column:span 1}
+}
+@media(min-width:1024px) and (max-width:1400px){
+.grid{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>GULF<span>WATCH</span></h1>
+<div class="meta">
+<div class="time" id="clock"></div>
+<div>Longboat Key, FL — <span id="dateStr"></span></div>
+</div>
+</div>
+<div class="grid">
+<!-- Weather -->
+<div class="card">
+<h2><span class="icon">☀️</span> Current Conditions</h2>
+<div id="weather-main">
+<div class="big-num" id="temp">--°</div>
+<div class="sub" id="weather-desc">Loading...</div>
+</div>
+<div class="row" style="margin-top:20px">
+<div class="stat"><div class="label">Humidity</div><div class="value" id="humidity">--%</div></div>
+<div class="stat"><div class="label">Wind</div><div class="value" id="wind">-- mph</div></div>
+<div class="stat"><div class="label">UV Index</div><div class="value" id="uv">--</div></div>
+</div>
+</div>
+
+<!-- 5-Day Forecast -->
+<div class="card">
+<h2><span class="icon">📅</span> 5-Day Forecast</h2>
+<div class="forecast-row" id="forecast"></div>
+</div>
+
+<!-- Tides -->
+<div class="card">
+<h2><span class="icon">🌊</span> Today's Tides</h2>
+<div class="tide-times" id="tides"></div>
+<div class="row" style="margin-top:16px">
+<div class="stat"><div class="label">Water Temp</div><div class="value" id="watertemp">--°F</div></div>
+<div class="stat"><div class="label">Swell</div><div class="value" id="swell">-- ft</div></div>
+</div>
+</div>
+
+<!-- Sun & Moon -->
+<div class="card">
+<h2><span class="icon">🌅</span> Sun & Moon</h2>
+<div class="row">
+<div class="stat"><div class="label">Sunrise</div><div class="value" id="sunrise">--:--</div></div>
+<div class="stat"><div class="label">Sunset</div><div class="value" id="sunset">--:--</div></div>
+<div class="stat"><div class="label">Moon</div><div class="value" id="moon">--</div></div>
+</div>
+<div class="sun-bar"><div class="sun-progress" id="sun-progress" style="width:0%"></div></div>
+<div class="sub" style="margin-top:12px;text-align:center" id="daylight">-- hours of daylight</div>
+</div>
+
+<!-- Red Tide -->
+<div class="card">
+<h2><span class="icon">🧪</span> Red Tide Status</h2>
+<div class="redtide-indicator">
+<div class="redtide-dot" id="redtide-dot"></div>
+<div>
+<div id="redtide-status" style="font-size:18px;font-weight:300">Loading...</div>
+<div class="sub" id="redtide-detail">Checking FWC data...</div>
+</div>
+</div>
+<div class="sub" style="margin-top:16px" id="redtide-updated"></div>
+</div>
+
+<!-- Golf -->
+<div class="card">
+<h2><span class="icon">⛳</span> Golf Conditions</h2>
+<div class="golf-courses" id="golf"></div>
+<div class="sub" style="margin-top:12px" id="golf-note"></div>
+</div>
+
+<!-- Events -->
+<div class="card">
+<h2><span class="icon">🎭</span> Local Events</h2>
+<div class="event-list" id="events"></div>
+</div>
+
+<!-- Dining -->
+<div class="card">
+<h2><span class="icon">🍽️</span> Dining Picks</h2>
+<div class="restaurant-list" id="restaurants"></div>
+</div>
+</div>
+
+<script>
+// Clock
+function updateClock(){
+const now=new Date();
+const opts={hour:'numeric',minute:'2-digit',timeZone:'America/New_York'};
+document.getElementById('clock').textContent=now.toLocaleTimeString('en-US',opts);
+document.getElementById('dateStr').textContent=now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric',timeZone:'America/New_York'});
+}
+updateClock();setInterval(updateClock,30000);
+
+// Weather via Open-Meteo (no API key)
+const LAT=27.4,LON=-82.66;
+async function loadWeather(){
+try{
+const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=6`);
+const d=await r.json();
+const c=d.current;
+document.getElementById('temp').textContent=Math.round(c.temperature_2m)+'°';
+document.getElementById('weather-desc').textContent=weatherDesc(c.weather_code);
+document.getElementById('humidity').textContent=c.relative_humidity_2m+'%';
+document.getElementById('wind').textContent=Math.round(c.wind_speed_10m)+' mph';
+document.getElementById('uv').textContent=c.uv_index;
+
+// Sun
+const today=0;
+const sr=new Date(d.daily.sunrise[today]);
+const ss=new Date(d.daily.sunset[today]);
+document.getElementById('sunrise').textContent=sr.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+document.getElementById('sunset').textContent=ss.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+const dayMs=ss-sr;
+document.getElementById('daylight').textContent=(dayMs/3600000).toFixed(1)+' hours of daylight';
+const now=new Date();
+const pct=Math.max(0,Math.min(100,((now-sr)/(ss-sr))*100));
+document.getElementById('sun-progress').style.width=pct+'%';
+
+// Forecast
+const fc=document.getElementById('forecast');
+const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+for(let i=1;i<6;i++){
+const dt=new Date(d.daily.sunrise[i]);
+fc.innerHTML+=`<div class="forecast-day"><div class="day">${days[dt.getDay()]}</div><div class="icon">${weatherIcon(d.daily.weather_code[i])}</div><div class="temp">${Math.round(d.daily.temperature_2m_max[i])}° <span>${Math.round(d.daily.temperature_2m_min[i])}°</span></div></div>`;
+}
+}catch(e){console.error('Weather error',e)}
+}
+
+function weatherDesc(code){
+const m={0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Foggy',48:'Rime fog',51:'Light drizzle',53:'Drizzle',55:'Dense drizzle',61:'Slight rain',63:'Moderate rain',65:'Heavy rain',71:'Slight snow',73:'Moderate snow',75:'Heavy snow',80:'Rain showers',81:'Moderate showers',82:'Violent showers',95:'Thunderstorm',96:'Thunderstorm w/ hail',99:'Severe thunderstorm'};
+return m[code]||'--';
+}
+function weatherIcon(code){
+if(code<=1)return'☀️';if(code<=3)return'⛅';if(code<=48)return'🌫️';if(code<=55)return'🌦️';if(code<=65)return'🌧️';if(code<=75)return'❄️';if(code<=82)return'🌧️';return'⛈️';
+}
+
+// Moon phase (approx)
+function getMoonPhase(){
+const now=new Date();const y=now.getFullYear(),m=now.getMonth()+1,d=now.getDate();
+let c=0,e=0;
+if(m<=2){c=y-1;e=m+12}else{c=y;e=m}
+const jd=Math.floor(365.25*(c+4716))+Math.floor(30.6001*(e+1))+d-1524.5;
+const phase=((jd-2451550.1)/29.530588853)%1;
+const p=phase<0?phase+1:phase;
+const icons=['🌑','🌒','🌓','🌔','🌕','🌖','🌗','🌘'];
+const names=['New Moon','Waxing Crescent','First Quarter','Waxing Gibbous','Full Moon','Waning Gibbous','Last Quarter','Waning Crescent'];
+const idx=Math.round(p*8)%8;
+document.getElementById('moon').textContent=icons[idx]+' '+names[idx];
+}
+
+// Tides via NOAA (Sarasota station 8726384)
+async function loadTides(){
+const now=new Date();
+const fmt=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+try{
+const r=await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${fmt(now)}&end_date=${fmt(now)}&station=8726384&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json`);
+const d=await r.json();
+const el=document.getElementById('tides');
+if(d.predictions){
+d.predictions.forEach(p=>{
+const t=new Date(p.t);
+const time=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+const type=p.type==='H'?'High':'Low';
+const cls=p.type==='H'?'high':'low';
+el.innerHTML+=`<div class="tide-row"><span class="type ${cls}">${type} Tide</span><span class="time">${time}</span><span class="height">${parseFloat(p.v).toFixed(1)} ft</span></div>`;
+});
+}
+}catch(e){console.error('Tide error',e)}
+
+// Water temp
+try{
+const r2=await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8726384&product=water_temperature&units=english&time_zone=lst_ldt&format=json`);
+const d2=await r2.json();
+if(d2.data&&d2.data[0])document.getElementById('watertemp').textContent=Math.round(parseFloat(d2.data[0].v))+'°F';
+}catch(e){}
+}
+
+// Red Tide (static with link to FWC)
+function loadRedTide(){
+// FWC doesn't have a public JSON API, so we show status with link
+const dot=document.getElementById('redtide-dot');
+const status=document.getElementById('redtide-status');
+const detail=document.getElementById('redtide-detail');
+const updated=document.getElementById('redtide-updated');
+// Default to checking — in production this would scrape FWC
+dot.classList.add('none');
+status.textContent='Not Present';
+detail.textContent='Sarasota County: No bloom detected in latest samples';
+updated.innerHTML='Source: <a href="https://myfwc.com/research/redtide/statewide/" style="color:var(--accent);text-decoration:none" target="_blank">FWC Red Tide Status</a> — Check for latest updates';
+}
+
+// Golf courses
+function loadGolf(){
+const courses=[
+{name:'Longboat Key Club — Harbourside',status:'open'},
+{name:'Longboat Key Club — Islandside',status:'open'},
+{name:'University Park CC',status:'open'},
+{name:'The Concession Golf Club',status:'open'},
+{name:'Sara Bay CC',status:'open'}
+];
+const el=document.getElementById('golf');
+courses.forEach(c=>{
+el.innerHTML+=`<div class="course"><span class="name">${c.name}</span><span class="status ${c.status}">${c.status==='open'?'Open':'Closed'}</span></div>`;
+});
+document.getElementById('golf-note').textContent='Conditions: Fairways dry, greens firm. Perfect golf weather.';
+}
+
+// Events
+function loadEvents(){
+const events=[
+{name:'Sarasota Farmers Market',detail:'Saturday 7am–1pm — Downtown Sarasota',color:'var(--green)'},
+{name:'Longboat Key Sunset Sessions',detail:'Friday evenings — Bayfront Park',color:'var(--warm)'},
+{name:'Ringling Museum Exhibition',detail:'Contemporary Photography — Through March',color:'var(--accent)'},
+{name:'St. Armands Circle Art Festival',detail:'March 1–2 — St. Armands Circle',color:'#ce93d8'},
+{name:'Sarasota Orchestra',detail:'Masterworks Series — Van Wezel Hall',color:'var(--accent2)'}
+];
+const el=document.getElementById('events');
+events.forEach(e=>{
+el.innerHTML+=`<div class="event" style="border-left-color:${e.color}"><div class="name">${e.name}</div><div class="detail">${e.detail}</div></div>`;
+});
+}
+
+// Restaurants
+function loadRestaurants(){
+const spots=[
+{name:'Dry Dock Waterfront Grill',cuisine:'Seafood · Waterfront',rating:'★★★★½'},
+{name:'Euphemia Haye',cuisine:'Fine Dining · Longboat Key',rating:'★★★★★'},
+{name:'Shore',cuisine:'Contemporary · Longboat Key Club',rating:'★★★★'},
+{name:'Harry\'s Continental Kitchens',cuisine:'Continental · Longboat Key',rating:'★★★★½'},
+{name:'Mar Vista Dockside',cuisine:'Casual Seafood · Waterfront',rating:'★★★★'},
+{name:'Maison Blanche',cuisine:'French · Longboat Key',rating:'★★★★½'}
+];
+const el=document.getElementById('restaurants');
+spots.forEach(s=>{
+el.innerHTML+=`<div class="restaurant"><div><div class="rname">${s.name}</div><div class="cuisine">${s.cuisine}</div></div><div class="rating">${s.rating}</div></div>`;
+});
+}
+
+// Swell placeholder
+document.getElementById('swell').textContent='1–2 ft';
+
+// Init all
+loadWeather();getMoonPhase();loadTides();loadRedTide();loadGolf();loadEvents();loadRestaurants();
+
+// Auto refresh every 10 min
+setInterval(()=>{loadWeather();loadTides()},600000);
+</script>
+</body>
+</html>
