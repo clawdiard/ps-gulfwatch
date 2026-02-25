@@ -265,32 +265,18 @@ document.getElementById('uv').textContent=c.uv_index;
 const today=0;
 const srRaw=d.daily.sunrise[today];
 const ssRaw=d.daily.sunset[today];
-// Format time from ISO string by extracting hours:minutes directly (avoids browser TZ reinterpretation)
-// Sanity check: if extracted hour seems wrong for sunrise (before 4AM or after 10AM), fall back to UTC offset conversion
-const utcOffsetSec=d.utc_offset_seconds||(-5*3600);
+// Format time from ISO string by extracting hours:minutes directly
+// API returns local times (America/New_York) since we pass timezone param
 const fmtLocalTime=(iso)=>{
 const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';
 let h=parseInt(m[1]),mi=m[2];
-// Validate: if this looks like UTC sunrise (0-2AM range) instead of ET, apply offset correction
-// For this latitude, sunrise is always between 5AM-8AM and sunset between 5PM-8PM ET
-const utcDate=new Date(iso+'Z');
-const correctedDate=new Date(utcDate.getTime()+utcOffsetSec*1000);
-const ch=correctedDate.getHours(),cm=String(correctedDate.getMinutes()).padStart(2,'0');
-// Use extracted value if reasonable (4AM-9AM for sunrise, 4PM-9PM for sunset), otherwise use corrected
-// We can't distinguish sunrise vs sunset here, so just trust the API if hour is 4-21
-if(h>=4&&h<=21){let ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;}
-// Fallback: use UTC offset corrected value
-let fh=ch;const fap=fh>=12?'PM':'AM';fh=fh%12||12;return`${fh}:${cm} ${fap}`;
+const ap=h>=12?'PM':'AM';
+h=h%12||12;
+return`${h}:${mi} ${ap}`;
 };
-// Extract hours/minutes as numbers for progress calculation (avoids new Date() UTC interpretation)
 const parseLocalMinutes=(iso)=>{
 const m=iso.match(/T(\d+):(\d+)/);if(!m)return 0;
-let h=parseInt(m[1]),mi=parseInt(m[2]);
-if(h>=4&&h<=21)return h*60+mi;
-// Fallback
-const utcDate=new Date(iso+'Z');
-const corrected=new Date(utcDate.getTime()+utcOffsetSec*1000);
-return corrected.getHours()*60+corrected.getMinutes();
+return parseInt(m[1])*60+parseInt(m[2]);
 };
 document.getElementById('sunrise').textContent=fmtLocalTime(srRaw);
 document.getElementById('sunset').textContent=fmtLocalTime(ssRaw);
