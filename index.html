@@ -249,6 +249,8 @@ const ssRaw=d.daily.sunset[today];
 const fmtLocalTime=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';let h=parseInt(m[1]),mi=m[2],ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;};
 document.getElementById('sunrise').textContent=fmtLocalTime(srRaw);
 document.getElementById('sunset').textContent=fmtLocalTime(ssRaw);
+const sr=new Date(srRaw);
+const ss=new Date(ssRaw);
 const dayMs=ss-sr;
 document.getElementById('daylight').textContent=(dayMs/3600000).toFixed(1)+' hours of daylight';
 const now=new Date();
