@@ -228,11 +228,29 @@ document.getElementById('dateStr').textContent=now.toLocaleDateString('en-US',{w
 }
 updateClock();setInterval(updateClock,30000);
 
+// Resilient fetch with retry + timeout
+async function fetchWithRetry(url,opts={},retries=2,timeoutMs=8000){
+for(let i=0;i<=retries;i++){
+try{
+const ctrl=new AbortController();
+const tid=setTimeout(()=>ctrl.abort(),timeoutMs);
+const r=await fetch(url,{...opts,signal:ctrl.signal});
+clearTimeout(tid);
+if(r.ok)return r;
+if(i<retries){await new Promise(r=>setTimeout(r,1000*(i+1)));continue;}
+return r;
+}catch(e){
+if(i>=retries)throw e;
+await new Promise(r=>setTimeout(r,1000*(i+1)));
+}
+}
+}
+
 // Weather via Open-Meteo (no API key)
 const LAT=27.4,LON=-82.66;
 async function loadWeather(){
 try{
-const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=6`);
+const r=await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=6`);
 if(!r.ok)throw new Error('Weather API HTTP '+r.status);
 const d=await r.json();
 if(!d.current||!d.daily)throw new Error('Weather API returned incomplete data');
@@ -329,7 +347,7 @@ async function loadTides(){
 const now=new Date();
 const fmt=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 try{
-const r=await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${fmt(now)}&end_date=${fmt(now)}&station=8726384&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json`);
+const r=await fetchWithRetry(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${fmt(now)}&end_date=${fmt(now)}&station=8726384&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json`);
 const d=await r.json();
 const el=document.getElementById('tides');
 if(d.predictions){
@@ -345,7 +363,7 @@ el.innerHTML+=`<div class="tide-row"><span class="type ${cls}">${type} Tide</spa
 
 // Water temp
 try{
-const r2=await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8726384&product=water_temperature&units=english&time_zone=lst_ldt&format=json`);
+const r2=await fetchWithRetry(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8726384&product=water_temperature&units=english&time_zone=lst_ldt&format=json`);
 const d2=await r2.json();
 if(d2.data&&d2.data[0])document.getElementById('watertemp').textContent=Math.round(parseFloat(d2.data[0].v))+'°F';
 }catch(e){}
@@ -371,7 +389,7 @@ const updated=document.getElementById('redtide-updated');
 const samplesEl=document.getElementById('redtide-samples');
 try{
 const params=new URLSearchParams({where:"County='Sarasota'",outFields:'LOCATION,SAMPLE_DATE,SampleDate_t,Abundance,LATITUDE,LONGITUDE',orderByFields:'SAMPLE_DATE DESC',resultRecordCount:'15',f:'json'});
-const r=await fetch(FWC_HAB_URL+'?'+params);
+const r=await fetchWithRetry(FWC_HAB_URL+'?'+params);
 const d=await r.json();
 if(!d.features||d.features.length===0){
 dot.classList.add('none');status.textContent='No Data';detail.textContent='No recent samples for Sarasota County';return;
@@ -456,7 +474,7 @@ const alertsEl=document.getElementById('beach-alerts');
 const updatedEl=document.getElementById('beach-updated');
 try{
 // Fetch NWS alerts for Sarasota County area
-const alertsR=await fetch('https://api.weather.gov/alerts/active?point=27.4,-82.66',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const alertsR=await fetchWithRetry('https://api.weather.gov/alerts/active?point=27.4,-82.66',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
 const alertsD=await alertsR.json();
 const beachAlerts=(alertsD.features||[]).filter(f=>{
 const ev=(f.properties.event||'').toLowerCase();
@@ -504,7 +522,7 @@ flagIcon.style.background=flagColors.length>1?`linear-gradient(180deg,${flagColo
 flagLabel.textContent=flagName;flagDesc.textContent=flagDescription;
 
 // Fetch marine forecast for surf height
-const fR=await fetch('https://api.weather.gov/gridpoints/TBW/65,73/forecast',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const fR=await fetchWithRetry('https://api.weather.gov/gridpoints/TBW/65,73/forecast',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
 const fD=await fR.json();
 const detail=(fD.properties?.periods?.[0]?.detailedForecast||'').toLowerCase();
 // Try to extract surf info from forecast text
@@ -539,7 +557,7 @@ const rampsEl=document.getElementById('boat-ramps');
 const updatedEl=document.getElementById('fishing-updated');
 try{
 // Open-Meteo Marine API for real-time ocean conditions
-const mR=await fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${LAT}&longitude=${LON}&current=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height&hourly=wave_height,wind_wave_height,swell_wave_height&timezone=America/New_York&forecast_days=1`);
+const mR=await fetchWithRetry(`https://marine-api.open-meteo.com/v1/marine?latitude=${LAT}&longitude=${LON}&current=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height&hourly=wave_height,wind_wave_height,swell_wave_height&timezone=America/New_York&forecast_days=1`);
 if(!mR.ok)throw new Error('Marine API HTTP '+mR.status);
 const mD=await mR.json();
 if(!mD.current)throw new Error('Marine API returned no current data');
@@ -559,7 +577,7 @@ visEl.textContent='10+ nm';
 const seaHeight=waveHt;
 // Also fetch current wind from Open-Meteo weather
 let windSpeed=10;
-try{const wR=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=wind_speed_10m&wind_speed_unit=kn&timezone=America/New_York`);const wD=await wR.json();windSpeed=wD.current?.wind_speed_10m||10;}catch(e){}
+try{const wR=await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=wind_speed_10m&wind_speed_unit=kn&timezone=America/New_York`);const wD=await wR.json();windSpeed=wD.current?.wind_speed_10m||10;}catch(e){}
 // Offshore rating (using meters for wave height thresholds)
 let offshoreRating,offshoreColor,offshoreDesc;
 if(seaHeight>1.8||windSpeed>25){offshoreRating='Poor';offshoreColor='var(--red)';offshoreDesc='Rough seas — not recommended'}
@@ -582,9 +600,10 @@ updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'nume
 }catch(e){
 console.error('Fishing conditions error',e);
 offshoreEl.textContent='Data unavailable';inshoreEl.textContent='Data unavailable';
-marineEl.textContent='Could not load marine data — retrying…';
+marineEl.textContent='Marine data temporarily unavailable — will retry';
 document.getElementById('swell').textContent='--';
-setTimeout(loadFishing,15000);
+seaEl.textContent='--';waveEl.textContent='--';visEl.textContent='--';
+setTimeout(loadFishing,30000);
 }
 // Boat ramps (static local data — these are real ramps near Longboat Key)
 const ramps=[
