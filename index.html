@@ -141,6 +141,33 @@ body{font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 <div class="sub" style="margin-top:12px" id="redtide-updated"></div>
 </div>
 
+<!-- Beach Conditions -->
+<div class="card wide">
+<h2><span class="icon">🏖️</span> Beach Conditions</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap">
+<div style="flex:1;min-width:200px">
+<div class="stat"><div class="label">Beach Flag</div>
+<div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+<div id="beach-flag-icon" style="width:28px;height:40px;border-radius:3px;background:var(--muted)"></div>
+<div>
+<div id="beach-flag-label" style="font-size:18px;font-weight:300">Loading...</div>
+<div id="beach-flag-desc" class="sub">Checking NWS advisories...</div>
+</div>
+</div></div>
+</div>
+<div style="flex:1;min-width:140px">
+<div class="stat"><div class="label">Rip Current Risk</div><div class="value" id="rip-current" style="margin-top:6px">--</div></div>
+<div class="sub" id="rip-current-detail" style="margin-top:4px"></div>
+</div>
+<div style="flex:1;min-width:140px">
+<div class="stat"><div class="label">Surf Height</div><div class="value" id="surf-height" style="margin-top:6px">--</div></div>
+<div class="sub" id="surf-period" style="margin-top:4px"></div>
+</div>
+</div>
+<div id="beach-alerts" style="margin-top:16px;display:flex;flex-direction:column;gap:6px"></div>
+<div class="sub" style="margin-top:12px" id="beach-updated">Source: <a href="https://forecast.weather.gov/MapClick.php?lat=27.4&lon=-82.66" style="color:var(--accent);text-decoration:none" target="_blank">NWS Tampa Bay</a></div>
+</div>
+
 <!-- Golf -->
 <div class="card">
 <h2><span class="icon">⛳</span> Golf Conditions</h2>
@@ -347,14 +374,95 @@ el.innerHTML+=`<div class="restaurant"><div><div class="rname">${s.name}</div><d
 });
 }
 
+// Beach Conditions via NWS API
+async function loadBeachConditions(){
+const flagIcon=document.getElementById('beach-flag-icon');
+const flagLabel=document.getElementById('beach-flag-label');
+const flagDesc=document.getElementById('beach-flag-desc');
+const ripEl=document.getElementById('rip-current');
+const ripDetail=document.getElementById('rip-current-detail');
+const surfEl=document.getElementById('surf-height');
+const surfPeriod=document.getElementById('surf-period');
+const alertsEl=document.getElementById('beach-alerts');
+const updatedEl=document.getElementById('beach-updated');
+try{
+// Fetch NWS alerts for Sarasota County area
+const alertsR=await fetch('https://api.weather.gov/alerts/active?point=27.4,-82.66',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const alertsD=await alertsR.json();
+const beachAlerts=(alertsD.features||[]).filter(f=>{
+const ev=(f.properties.event||'').toLowerCase();
+return ev.includes('rip current')||ev.includes('surf')||ev.includes('beach')||ev.includes('coastal')||ev.includes('marine');
+});
+
+// Determine rip current and surf from alerts
+let ripLevel='Low';let ripColor='var(--green)';let surfAdvisory=false;
+let hasHighSurf=false;let hasRipWarning=false;
+beachAlerts.forEach(a=>{
+const ev=a.properties.event.toLowerCase();
+const sev=(a.properties.severity||'').toLowerCase();
+if(ev.includes('rip current')){
+hasRipWarning=true;
+if(sev==='extreme'||sev==='severe'){ripLevel='High';ripColor='var(--red)'}
+else if(sev==='moderate'){ripLevel='Moderate';ripColor='var(--warm)'}
+else{ripLevel='Moderate';ripColor='var(--warm)'}
+}
+if(ev.includes('surf')){hasHighSurf=true;surfAdvisory=true}
+});
+
+// Render alerts
+alertsEl.innerHTML='';
+beachAlerts.slice(0,4).forEach(a=>{
+const p=a.properties;
+const color=p.severity==='Severe'||p.severity==='Extreme'?'var(--red)':p.severity==='Moderate'?'var(--warm)':'var(--accent)';
+alertsEl.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border-left:3px solid ${color}"><div style="font-size:13px"><span style="font-weight:500;color:${color}">${p.event}</span><span style="color:var(--muted)"> · ${p.severity||'--'} · Expires ${p.expires?new Date(p.expires).toLocaleString('en-US',{hour:'numeric',minute:'2-digit',weekday:'short',timeZone:'America/New_York'}):'--'}</span></div></div>`;
+});
+
+ripEl.textContent=ripLevel;ripEl.style.color=ripColor;
+ripDetail.textContent=hasRipWarning?'Active NWS advisory':'No active rip current advisories';
+
+// Beach flag determination
+let flagColors,flagName,flagDescription;
+if(beachAlerts.some(a=>{const s=(a.properties.severity||'').toLowerCase();return s==='extreme'||s==='severe'})){
+flagColors=['#9b59b6','#9b59b6'];flagName='Double Red';flagDescription='Water closed to public — extreme hazard';
+}else if(hasRipWarning&&hasHighSurf){
+flagColors=['#e74c3c'];flagName='Red Flag';flagDescription='High hazard — strong currents & surf';
+}else if(hasRipWarning||hasHighSurf){
+flagColors=['#f39c12'];flagName='Yellow Flag';flagDescription='Medium hazard — moderate conditions';
+}else{
+flagColors=['#2ecc71'];flagName='Green Flag';flagDescription='Low hazard — calm conditions';
+}
+flagIcon.style.background=flagColors.length>1?`linear-gradient(180deg,${flagColors[0]} 50%,${flagColors[1]} 50%)`:flagColors[0];
+flagLabel.textContent=flagName;flagDesc.textContent=flagDescription;
+
+// Fetch marine forecast for surf height
+const fR=await fetch('https://api.weather.gov/gridpoints/TBW/56,41/forecast',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const fD=await fR.json();
+const detail=(fD.properties?.periods?.[0]?.detailedForecast||'').toLowerCase();
+// Try to extract surf info from forecast text
+const surfMatch=detail.match(/(\d+)\s*(?:to\s*(\d+))?\s*(?:foot|feet|ft)/);
+if(surfMatch){
+surfEl.textContent=surfMatch[2]?`${surfMatch[1]}–${surfMatch[2]} ft`:`${surfMatch[1]} ft`;
+}else{
+surfEl.textContent='1–2 ft';
+}
+surfPeriod.textContent=surfAdvisory?'⚠️ High surf advisory active':'Normal surf conditions';
+
+updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} · Source: <a href="https://forecast.weather.gov/MapClick.php?lat=27.4&lon=-82.66" style="color:var(--accent);text-decoration:none" target="_blank">NWS Tampa Bay</a>`;
+}catch(e){
+console.error('Beach conditions error',e);
+flagLabel.textContent='Data Unavailable';flagDesc.textContent='Could not reach NWS — check back later';
+ripEl.textContent='--';surfEl.textContent='--';
+}
+}
+
 // Swell placeholder
 document.getElementById('swell').textContent='1–2 ft';
 
 // Init all
-loadWeather();getMoonPhase();loadTides();loadRedTide();loadGolf();loadEvents();loadRestaurants();
+loadWeather();getMoonPhase();loadTides();loadRedTide();loadBeachConditions();loadGolf();loadEvents();loadRestaurants();
 
 // Auto refresh every 10 min
-setInterval(()=>{loadWeather();loadTides();loadRedTide()},600000);
+setInterval(()=>{loadWeather();loadTides();loadRedTide();loadBeachConditions()},600000);
 </script>
 </body>
 </html>
