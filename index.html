@@ -233,7 +233,9 @@ const LAT=27.4,LON=-82.66;
 async function loadWeather(){
 try{
 const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,uv_index,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=6`);
+if(!r.ok)throw new Error('Weather API HTTP '+r.status);
 const d=await r.json();
+if(!d.current||!d.daily)throw new Error('Weather API returned incomplete data');
 const c=d.current;
 document.getElementById('temp').textContent=Math.round(c.temperature_2m)+'°';
 document.getElementById('weather-desc').textContent=weatherDesc(c.weather_code);
@@ -264,7 +266,12 @@ for(let i=1;i<6;i++){
 const dt=new Date(d.daily.sunrise[i]);
 fc.innerHTML+=`<div class="forecast-day"><div class="day">${days[dt.getDay()]}</div><div class="icon">${weatherIcon(d.daily.weather_code[i])}</div><div class="temp">${Math.round(d.daily.temperature_2m_max[i])}° <span>${Math.round(d.daily.temperature_2m_min[i])}°</span></div></div>`;
 }
-}catch(e){console.error('Weather error',e)}
+}catch(e){
+console.error('Weather error',e);
+document.getElementById('temp').textContent='--°';
+document.getElementById('weather-desc').textContent='Unable to load — retrying…';
+setTimeout(loadWeather,15000);
+}
 }
 
 function weatherDesc(code){
