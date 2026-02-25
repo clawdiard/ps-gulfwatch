@@ -243,10 +243,12 @@ document.getElementById('uv').textContent=c.uv_index;
 
 // Sun
 const today=0;
-const sr=new Date(d.daily.sunrise[today]);
-const ss=new Date(d.daily.sunset[today]);
-document.getElementById('sunrise').textContent=sr.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
-document.getElementById('sunset').textContent=ss.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'});
+const srRaw=d.daily.sunrise[today];
+const ssRaw=d.daily.sunset[today];
+// Open-Meteo returns local time without offset; parse as local time string directly
+const fmtLocalTime=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';let h=parseInt(m[1]),mi=m[2],ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;};
+document.getElementById('sunrise').textContent=fmtLocalTime(srRaw);
+document.getElementById('sunset').textContent=fmtLocalTime(ssRaw);
 const dayMs=ss-sr;
 document.getElementById('daylight').textContent=(dayMs/3600000).toFixed(1)+' hours of daylight';
 const now=new Date();
@@ -465,7 +467,7 @@ flagIcon.style.background=flagColors.length>1?`linear-gradient(180deg,${flagColo
 flagLabel.textContent=flagName;flagDesc.textContent=flagDescription;
 
 // Fetch marine forecast for surf height
-const fR=await fetch('https://api.weather.gov/gridpoints/TBW/56,41/forecast',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const fR=await fetch('https://api.weather.gov/gridpoints/TBW/65,73/forecast',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
 const fD=await fR.json();
 const detail=(fD.properties?.periods?.[0]?.detailedForecast||'').toLowerCase();
 // Try to extract surf info from forecast text
@@ -485,8 +487,8 @@ ripEl.textContent='--';surfEl.textContent='--';
 }
 }
 
-// Swell placeholder
-document.getElementById('swell').textContent='1–2 ft';
+// Swell will be updated by loadFishing() with real Open-Meteo marine data
+document.getElementById('swell').textContent='Loading...';
 
 // Fishing & Boating Conditions
 async function loadFishing(){
@@ -499,47 +501,45 @@ const visEl=document.getElementById('marine-vis');
 const rampsEl=document.getElementById('boat-ramps');
 const updatedEl=document.getElementById('fishing-updated');
 try{
-// NWS marine zone forecast for coastal waters — Tarpon Springs to Englewood
-const mR=await fetch('https://api.weather.gov/zones/forecast/GMZ856',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+// Open-Meteo Marine API for real-time ocean conditions
+const mR=await fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${LAT}&longitude=${LON}&current=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height&hourly=wave_height,wind_wave_height,swell_wave_height&timezone=America/New_York&forecast_days=1`);
 const mD=await mR.json();
-// Get zone forecast
-const fR=await fetch(`https://api.weather.gov/zones/forecast/GMZ856/forecast`,{headers:{'User-Agent':'PSGulfWatch/1.0'}});
-const fD=await fR.json();
-const periods=fD.properties?.periods||[];
-const nowPeriod=periods[0]||{};
-const nextPeriod=periods[1]||{};
-// Parse marine details
-const detail=nowPeriod.detailedForecast||nowPeriod.text||'';
-// Extract wind/seas info
-const seasMatch=detail.match(/seas?\s+(\d+)\s*(?:to\s*(\d+))?\s*(?:feet|foot|ft)/i);
-const windMatch=detail.match(/wind[s]?\s+(?:around\s+)?(\d+)\s*(?:to\s*(\d+))?\s*(?:knots?|kt)/i);
-const visMatch=detail.match(/visibility\s+(\d+)\s*(?:to\s*(\d+))?\s*(?:nm|nautical)/i);
-if(seasMatch)seaEl.textContent=seasMatch[2]?`${seasMatch[1]}–${seasMatch[2]} ft`:`${seasMatch[1]} ft`;
-else seaEl.textContent='1–3 ft';
-if(windMatch)waveEl.textContent=windMatch[2]?`${windMatch[1]}–${windMatch[2]} kt`:`${windMatch[1]} kt`;
-else waveEl.textContent='--';
-if(visMatch)visEl.textContent=visMatch[2]?`${visMatch[1]}–${visMatch[2]} nm`:`${visMatch[1]}+ nm`;
-else visEl.textContent='10+ nm';
-// Determine fishing rating from conditions
-const windSpeed=windMatch?parseInt(windMatch[2]||windMatch[1]):10;
-const seaHeight=seasMatch?parseInt(seasMatch[2]||seasMatch[1]):2;
-// Offshore rating
+const cur=mD.current||{};
+const waveHt=cur.wave_height||0;const waveHtFt=(waveHt*3.281).toFixed(1);
+const swellHt=cur.swell_wave_height||0;const swellFt=(swellHt*3.281).toFixed(1);
+const windWaveHt=cur.wind_wave_height||0;const windWaveFt=(windWaveHt*3.281).toFixed(1);
+const wavePeriod=cur.wave_period||0;
+const waveDir=cur.wave_direction||0;
+const dirNames=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const dirName=dirNames[Math.round(waveDir/22.5)%16];
+// Display sea state
+seaEl.textContent=`${waveHtFt} ft`;
+waveEl.textContent=windWaveFt>0?`${windWaveFt} ft`:'Calm';
+visEl.textContent='10+ nm';
+// Determine fishing rating from wave height (in meters)
+const seaHeight=waveHt;
+// Also fetch current wind from Open-Meteo weather
+let windSpeed=10;
+try{const wR=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=wind_speed_10m&wind_speed_unit=kn&timezone=America/New_York`);const wD=await wR.json();windSpeed=wD.current?.wind_speed_10m||10;}catch(e){}
+// Offshore rating (using meters for wave height thresholds)
 let offshoreRating,offshoreColor,offshoreDesc;
-if(seaHeight>6||windSpeed>25){offshoreRating='Poor';offshoreColor='var(--red)';offshoreDesc='Rough seas — not recommended'}
-else if(seaHeight>4||windSpeed>20){offshoreRating='Fair';offshoreColor='var(--warm)';offshoreDesc='Choppy — experienced anglers only'}
-else if(seaHeight>2||windSpeed>15){offshoreRating='Good';offshoreColor='var(--accent)';offshoreDesc='Moderate seas — good for trolling & bottom fishing'}
+if(seaHeight>1.8||windSpeed>25){offshoreRating='Poor';offshoreColor='var(--red)';offshoreDesc='Rough seas — not recommended'}
+else if(seaHeight>1.2||windSpeed>20){offshoreRating='Fair';offshoreColor='var(--warm)';offshoreDesc='Choppy — experienced anglers only'}
+else if(seaHeight>0.6||windSpeed>15){offshoreRating='Good';offshoreColor='var(--accent)';offshoreDesc='Moderate seas — good for trolling & bottom fishing'}
 else{offshoreRating='Excellent';offshoreColor='var(--green)';offshoreDesc='Calm seas — ideal for all offshore fishing'}
 offshoreEl.innerHTML=`<span style="color:${offshoreColor};font-weight:500;font-size:18px">${offshoreRating}</span><div style="font-size:12px;color:var(--muted);margin-top:2px">${offshoreDesc}</div>`;
-// Inshore is usually better than offshore
+// Inshore rating
 let inshoreRating,inshoreColor,inshoreDesc;
 if(windSpeed>25){inshoreRating='Fair';inshoreColor='var(--warm)';inshoreDesc='Strong winds — sheltered spots recommended'}
 else if(windSpeed>15){inshoreRating='Good';inshoreColor='var(--accent)';inshoreDesc='Breezy — fish leeward mangroves & flats'}
 else{inshoreRating='Excellent';inshoreColor='var(--green)';inshoreDesc='Light winds — perfect for flats, redfish, snook'}
 inshoreEl.innerHTML=`<span style="color:${inshoreColor};font-weight:500;font-size:18px">${inshoreRating}</span><div style="font-size:12px;color:var(--muted);margin-top:2px">${inshoreDesc}</div>`;
-// Marine forecast text (truncated)
-const forecastText=detail.length>220?detail.substring(0,220)+'…':detail;
-marineEl.textContent=forecastText||'Marine forecast unavailable';
-updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} · Source: <a href="https://marine.weather.gov/MapClick.php?lat=27.4&lon=-82.66" style="color:var(--accent);text-decoration:none" target="_blank">NWS Marine Forecast</a>`;
+// Marine forecast summary
+const forecastText=`Waves ${waveHtFt} ft from ${dirName} · Period ${wavePeriod.toFixed(0)}s · Swell ${swellFt} ft · Wind waves ${windWaveFt} ft`;
+marineEl.textContent=forecastText;
+// Update swell in Tides section
+document.getElementById('swell').textContent=`${swellFt} ft`;
+updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} · Source: <a href="https://open-meteo.com/" style="color:var(--accent);text-decoration:none" target="_blank">Open-Meteo Marine API</a>`;
 }catch(e){
 console.error('Fishing conditions error',e);
 offshoreEl.textContent='Data unavailable';inshoreEl.textContent='Data unavailable';
