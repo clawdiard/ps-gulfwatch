@@ -248,9 +248,32 @@ const today=0;
 const srRaw=d.daily.sunrise[today];
 const ssRaw=d.daily.sunset[today];
 // Format time from ISO string by extracting hours:minutes directly (avoids browser TZ reinterpretation)
-const fmtLocalTime=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';let h=parseInt(m[1]),mi=m[2],ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;};
+// Sanity check: if extracted hour seems wrong for sunrise (before 4AM or after 10AM), fall back to UTC offset conversion
+const utcOffsetSec=d.utc_offset_seconds||(-5*3600);
+const fmtLocalTime=(iso)=>{
+const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';
+let h=parseInt(m[1]),mi=m[2];
+// Validate: if this looks like UTC sunrise (0-2AM range) instead of ET, apply offset correction
+// For this latitude, sunrise is always between 5AM-8AM and sunset between 5PM-8PM ET
+const utcDate=new Date(iso+'Z');
+const correctedDate=new Date(utcDate.getTime()+utcOffsetSec*1000);
+const ch=correctedDate.getHours(),cm=String(correctedDate.getMinutes()).padStart(2,'0');
+// Use extracted value if reasonable (4AM-9AM for sunrise, 4PM-9PM for sunset), otherwise use corrected
+// We can't distinguish sunrise vs sunset here, so just trust the API if hour is 4-21
+if(h>=4&&h<=21){let ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;}
+// Fallback: use UTC offset corrected value
+let fh=ch;const fap=fh>=12?'PM':'AM';fh=fh%12||12;return`${fh}:${cm} ${fap}`;
+};
 // Extract hours/minutes as numbers for progress calculation (avoids new Date() UTC interpretation)
-const parseLocalMinutes=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);return m?parseInt(m[1])*60+parseInt(m[2]):0;};
+const parseLocalMinutes=(iso)=>{
+const m=iso.match(/T(\d+):(\d+)/);if(!m)return 0;
+let h=parseInt(m[1]),mi=parseInt(m[2]);
+if(h>=4&&h<=21)return h*60+mi;
+// Fallback
+const utcDate=new Date(iso+'Z');
+const corrected=new Date(utcDate.getTime()+utcOffsetSec*1000);
+return corrected.getHours()*60+corrected.getMinutes();
+};
 document.getElementById('sunrise').textContent=fmtLocalTime(srRaw);
 document.getElementById('sunset').textContent=fmtLocalTime(ssRaw);
 const srMin=parseLocalMinutes(srRaw);
@@ -268,7 +291,7 @@ document.getElementById('sun-progress').style.width=pct+'%';
 const fc=document.getElementById('forecast');
 const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 for(let i=1;i<6;i++){
-const dt=new Date(d.daily.sunrise[i]);
+const dt=new Date(d.daily.time[i]+'T12:00');// use date string, force midday to avoid day-boundary TZ shifts
 fc.innerHTML+=`<div class="forecast-day"><div class="day">${days[dt.getDay()]}</div><div class="icon">${weatherIcon(d.daily.weather_code[i])}</div><div class="temp">${Math.round(d.daily.temperature_2m_max[i])}° <span>${Math.round(d.daily.temperature_2m_min[i])}°</span></div></div>`;
 }
 }catch(e){
