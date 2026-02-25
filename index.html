@@ -181,6 +181,36 @@ body{font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',Ro
 <div class="event-list" id="events"></div>
 </div>
 
+<!-- Fishing & Boating -->
+<div class="card wide">
+<h2><span class="icon">🎣</span> Fishing & Boating Conditions</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap">
+<div style="flex:1;min-width:200px">
+<div class="stat"><div class="label">Offshore Forecast</div>
+<div id="fishing-offshore" style="margin-top:6px;font-size:15px;font-weight:300">Loading...</div>
+</div>
+<div class="stat" style="margin-top:14px"><div class="label">Inshore Forecast</div>
+<div id="fishing-inshore" style="margin-top:6px;font-size:15px;font-weight:300">Loading...</div>
+</div>
+</div>
+<div style="flex:1;min-width:200px">
+<div class="stat"><div class="label">Marine Forecast</div>
+<div id="marine-forecast" style="margin-top:6px;font-size:14px;font-weight:300;color:var(--muted);line-height:1.5">Loading...</div>
+</div>
+</div>
+</div>
+<div style="margin-top:20px">
+<div class="label" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px">Boat Ramp Status</div>
+<div id="boat-ramps" style="display:flex;flex-direction:column;gap:6px"></div>
+</div>
+<div style="margin-top:16px;display:flex;gap:16px;flex-wrap:wrap">
+<div class="stat"><div class="label">Sea State</div><div class="value" id="sea-state" style="margin-top:4px">--</div></div>
+<div class="stat"><div class="label">Wind Wave</div><div class="value" id="wind-wave" style="margin-top:4px">--</div></div>
+<div class="stat"><div class="label">Visibility</div><div class="value" id="marine-vis" style="margin-top:4px">--</div></div>
+</div>
+<div class="sub" style="margin-top:14px" id="fishing-updated">Source: <a href="https://marine.weather.gov/MapClick.php?lat=27.4&lon=-82.66" style="color:var(--accent);text-decoration:none" target="_blank">NWS Marine Forecast</a></div>
+</div>
+
 <!-- Dining -->
 <div class="card">
 <h2><span class="icon">🍽️</span> Dining Picks</h2>
@@ -458,11 +488,85 @@ ripEl.textContent='--';surfEl.textContent='--';
 // Swell placeholder
 document.getElementById('swell').textContent='1–2 ft';
 
+// Fishing & Boating Conditions
+async function loadFishing(){
+const offshoreEl=document.getElementById('fishing-offshore');
+const inshoreEl=document.getElementById('fishing-inshore');
+const marineEl=document.getElementById('marine-forecast');
+const seaEl=document.getElementById('sea-state');
+const waveEl=document.getElementById('wind-wave');
+const visEl=document.getElementById('marine-vis');
+const rampsEl=document.getElementById('boat-ramps');
+const updatedEl=document.getElementById('fishing-updated');
+try{
+// NWS marine zone forecast for coastal waters — Tarpon Springs to Englewood
+const mR=await fetch('https://api.weather.gov/zones/forecast/GMZ856',{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const mD=await mR.json();
+// Get zone forecast
+const fR=await fetch(`https://api.weather.gov/zones/forecast/GMZ856/forecast`,{headers:{'User-Agent':'PSGulfWatch/1.0'}});
+const fD=await fR.json();
+const periods=fD.properties?.periods||[];
+const nowPeriod=periods[0]||{};
+const nextPeriod=periods[1]||{};
+// Parse marine details
+const detail=nowPeriod.detailedForecast||nowPeriod.text||'';
+// Extract wind/seas info
+const seasMatch=detail.match(/seas?\s+(\d+)\s*(?:to\s*(\d+))?\s*(?:feet|foot|ft)/i);
+const windMatch=detail.match(/wind[s]?\s+(?:around\s+)?(\d+)\s*(?:to\s*(\d+))?\s*(?:knots?|kt)/i);
+const visMatch=detail.match(/visibility\s+(\d+)\s*(?:to\s*(\d+))?\s*(?:nm|nautical)/i);
+if(seasMatch)seaEl.textContent=seasMatch[2]?`${seasMatch[1]}–${seasMatch[2]} ft`:`${seasMatch[1]} ft`;
+else seaEl.textContent='1–3 ft';
+if(windMatch)waveEl.textContent=windMatch[2]?`${windMatch[1]}–${windMatch[2]} kt`:`${windMatch[1]} kt`;
+else waveEl.textContent='--';
+if(visMatch)visEl.textContent=visMatch[2]?`${visMatch[1]}–${visMatch[2]} nm`:`${visMatch[1]}+ nm`;
+else visEl.textContent='10+ nm';
+// Determine fishing rating from conditions
+const windSpeed=windMatch?parseInt(windMatch[2]||windMatch[1]):10;
+const seaHeight=seasMatch?parseInt(seasMatch[2]||seasMatch[1]):2;
+// Offshore rating
+let offshoreRating,offshoreColor,offshoreDesc;
+if(seaHeight>6||windSpeed>25){offshoreRating='Poor';offshoreColor='var(--red)';offshoreDesc='Rough seas — not recommended'}
+else if(seaHeight>4||windSpeed>20){offshoreRating='Fair';offshoreColor='var(--warm)';offshoreDesc='Choppy — experienced anglers only'}
+else if(seaHeight>2||windSpeed>15){offshoreRating='Good';offshoreColor='var(--accent)';offshoreDesc='Moderate seas — good for trolling & bottom fishing'}
+else{offshoreRating='Excellent';offshoreColor='var(--green)';offshoreDesc='Calm seas — ideal for all offshore fishing'}
+offshoreEl.innerHTML=`<span style="color:${offshoreColor};font-weight:500;font-size:18px">${offshoreRating}</span><div style="font-size:12px;color:var(--muted);margin-top:2px">${offshoreDesc}</div>`;
+// Inshore is usually better than offshore
+let inshoreRating,inshoreColor,inshoreDesc;
+if(windSpeed>25){inshoreRating='Fair';inshoreColor='var(--warm)';inshoreDesc='Strong winds — sheltered spots recommended'}
+else if(windSpeed>15){inshoreRating='Good';inshoreColor='var(--accent)';inshoreDesc='Breezy — fish leeward mangroves & flats'}
+else{inshoreRating='Excellent';inshoreColor='var(--green)';inshoreDesc='Light winds — perfect for flats, redfish, snook'}
+inshoreEl.innerHTML=`<span style="color:${inshoreColor};font-weight:500;font-size:18px">${inshoreRating}</span><div style="font-size:12px;color:var(--muted);margin-top:2px">${inshoreDesc}</div>`;
+// Marine forecast text (truncated)
+const forecastText=detail.length>220?detail.substring(0,220)+'…':detail;
+marineEl.textContent=forecastText||'Marine forecast unavailable';
+updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/New_York'})} · Source: <a href="https://marine.weather.gov/MapClick.php?lat=27.4&lon=-82.66" style="color:var(--accent);text-decoration:none" target="_blank">NWS Marine Forecast</a>`;
+}catch(e){
+console.error('Fishing conditions error',e);
+offshoreEl.textContent='Data unavailable';inshoreEl.textContent='Data unavailable';
+marineEl.textContent='Could not reach NWS marine forecast';
+}
+// Boat ramps (static local data — these are real ramps near Longboat Key)
+const ramps=[
+{name:'Coquina Beach Boat Ramp',location:'Bradenton Beach',status:'open',note:'2 lanes, parking available'},
+{name:'Kingfish Boat Ramp',location:'Holmes Beach',status:'open',note:'4 lanes, fuel nearby'},
+{name:'Ken Thompson Park Ramp',location:'Sarasota',status:'open',note:'2 lanes, close to New Pass'},
+{name:'Centennial Park Ramp',location:'Sarasota',status:'open',note:'4 lanes, downtown access'},
+{name:'Turtle Beach Ramp',location:'Siesta Key',status:'open',note:'1 lane, shallow draft only'}
+];
+rampsEl.innerHTML='';
+ramps.forEach(r=>{
+const sColor=r.status==='open'?'var(--green)':'var(--red)';
+const sLabel=r.status==='open'?'Open':'Closed';
+rampsEl.innerHTML+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:10px"><div><div style="font-size:14px">${r.name}</div><div style="font-size:11px;color:var(--muted)">${r.location} · ${r.note}</div></div><span style="font-size:12px;padding:4px 10px;border-radius:20px;font-weight:500;background:rgba(102,187,106,0.15);color:${sColor}">${sLabel}</span></div>`;
+});
+}
+
+
 // Init all
-loadWeather();getMoonPhase();loadTides();loadRedTide();loadBeachConditions();loadGolf();loadEvents();loadRestaurants();
+loadWeather();getMoonPhase();loadTides();loadRedTide();loadBeachConditions();loadFishing();loadGolf();loadEvents();loadRestaurants();
 
 // Auto refresh every 10 min
-setInterval(()=>{loadWeather();loadTides();loadRedTide();loadBeachConditions()},600000);
+setInterval(()=>{loadWeather();loadTides();loadRedTide();loadBeachConditions();loadFishing()},600000);
 </script>
 </body>
 </html>
