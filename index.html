@@ -243,20 +243,25 @@ document.getElementById('humidity').textContent=c.relative_humidity_2m+'%';
 document.getElementById('wind').textContent=Math.round(c.wind_speed_10m)+' mph';
 document.getElementById('uv').textContent=c.uv_index;
 
-// Sun
+// Sun — parse Open-Meteo local times (returned in America/New_York when timezone param set)
 const today=0;
 const srRaw=d.daily.sunrise[today];
 const ssRaw=d.daily.sunset[today];
-// Open-Meteo returns local time without offset; parse as local time string directly
+// Format time from ISO string by extracting hours:minutes directly (avoids browser TZ reinterpretation)
 const fmtLocalTime=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);if(!m)return'--';let h=parseInt(m[1]),mi=m[2],ap=h>=12?'PM':'AM';h=h%12||12;return`${h}:${mi} ${ap}`;};
+// Extract hours/minutes as numbers for progress calculation (avoids new Date() UTC interpretation)
+const parseLocalMinutes=(iso)=>{const m=iso.match(/T(\d+):(\d+)/);return m?parseInt(m[1])*60+parseInt(m[2]):0;};
 document.getElementById('sunrise').textContent=fmtLocalTime(srRaw);
 document.getElementById('sunset').textContent=fmtLocalTime(ssRaw);
-const sr=new Date(srRaw);
-const ss=new Date(ssRaw);
-const dayMs=ss-sr;
-document.getElementById('daylight').textContent=(dayMs/3600000).toFixed(1)+' hours of daylight';
-const now=new Date();
-const pct=Math.max(0,Math.min(100,((now-sr)/(ss-sr))*100));
+const srMin=parseLocalMinutes(srRaw);
+const ssMin=parseLocalMinutes(ssRaw);
+const dayMinutes=ssMin-srMin;
+document.getElementById('daylight').textContent=(dayMinutes/60).toFixed(1)+' hours of daylight';
+// Calculate sun progress using current ET time (not browser local time)
+const nowET=new Date().toLocaleString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'numeric',hour12:false});
+const nowParts=nowET.split(':');
+const nowMin=parseInt(nowParts[0])*60+parseInt(nowParts[1]);
+const pct=Math.max(0,Math.min(100,((nowMin-srMin)/dayMinutes)*100));
 document.getElementById('sun-progress').style.width=pct+'%';
 
 // Forecast
@@ -512,7 +517,9 @@ const updatedEl=document.getElementById('fishing-updated');
 try{
 // Open-Meteo Marine API for real-time ocean conditions
 const mR=await fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${LAT}&longitude=${LON}&current=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height&hourly=wave_height,wind_wave_height,swell_wave_height&timezone=America/New_York&forecast_days=1`);
+if(!mR.ok)throw new Error('Marine API HTTP '+mR.status);
 const mD=await mR.json();
+if(!mD.current)throw new Error('Marine API returned no current data');
 const cur=mD.current||{};
 const waveHt=cur.wave_height||0;const waveHtFt=(waveHt*3.281).toFixed(1);
 const swellHt=cur.swell_wave_height||0;const swellFt=(swellHt*3.281).toFixed(1);
@@ -552,7 +559,9 @@ updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'nume
 }catch(e){
 console.error('Fishing conditions error',e);
 offshoreEl.textContent='Data unavailable';inshoreEl.textContent='Data unavailable';
-marineEl.textContent='Could not reach NWS marine forecast';
+marineEl.textContent='Could not load marine data — retrying…';
+document.getElementById('swell').textContent='--';
+setTimeout(loadFishing,15000);
 }
 // Boat ramps (static local data — these are real ramps near Longboat Key)
 const ramps=[
