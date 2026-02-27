@@ -229,7 +229,7 @@ document.getElementById('dateStr').textContent=now.toLocaleDateString('en-US',{w
 updateClock();setInterval(updateClock,30000);
 
 // Resilient fetch with retry + timeout
-async function fetchWithRetry(url,opts={},retries=2,timeoutMs=8000){
+async function fetchWithRetry(url,opts={},retries=3,timeoutMs=12000){
 for(let i=0;i<=retries;i++){
 try{
 const ctrl=new AbortController();
@@ -375,8 +375,16 @@ const updated=document.getElementById('redtide-updated');
 const samplesEl=document.getElementById('redtide-samples');
 try{
 const params=new URLSearchParams({where:"County='Sarasota'",outFields:'LOCATION,SAMPLE_DATE,SampleDate_t,Abundance,LATITUDE,LONGITUDE',orderByFields:'SAMPLE_DATE DESC',resultRecordCount:'15',f:'json'});
+let d;
+try{
 const r=await fetchWithRetry(FWC_HAB_URL+'?'+params);
-const d=await r.json();
+d=await r.json();
+if(d.features&&d.features.length>0){try{localStorage.setItem('ps-gw-redtide',JSON.stringify({ts:Date.now(),data:d}))}catch(e){}}
+}catch(fetchErr){
+console.warn('FWC HAB API failed, checking cache',fetchErr);
+const cached=JSON.parse(localStorage.getItem('ps-gw-redtide')||'null');
+if(cached&&cached.data&&(Date.now()-cached.ts)<7200000){d=cached.data;}else{throw fetchErr;}
+}
 if(!d.features||d.features.length===0){
 dot.classList.add('none');status.textContent='No Data';detail.textContent='No recent samples for Sarasota County';return;
 }
@@ -543,10 +551,19 @@ const rampsEl=document.getElementById('boat-ramps');
 const updatedEl=document.getElementById('fishing-updated');
 try{
 // Open-Meteo Marine API for real-time ocean conditions
+let mD;
+try{
 const mR=await fetchWithRetry(`https://marine-api.open-meteo.com/v1/marine?latitude=${LAT}&longitude=${LON}&current=wave_height,wave_direction,wave_period,wind_wave_height,swell_wave_height&hourly=wave_height,wind_wave_height,swell_wave_height&timezone=America/New_York&forecast_days=1`);
 if(!mR.ok)throw new Error('Marine API HTTP '+mR.status);
-const mD=await mR.json();
+mD=await mR.json();
 if(!mD.current)throw new Error('Marine API returned no current data');
+try{localStorage.setItem('ps-gw-marine',JSON.stringify({ts:Date.now(),data:mD}))}catch(e){}
+}catch(marineErr){
+console.warn('Marine API failed, checking cache',marineErr);
+try{const cached=JSON.parse(localStorage.getItem('ps-gw-marine')||'null');
+if(cached&&cached.data&&(Date.now()-cached.ts)<3600000){mD=cached.data;console.log('Using cached marine data');}
+else throw marineErr;}catch(e){throw marineErr;}
+}
 const cur=mD.current||{};
 const waveHt=cur.wave_height||0;const waveHtFt=(waveHt*3.281).toFixed(1);
 const swellHt=cur.swell_wave_height||0;const swellFt=(swellHt*3.281).toFixed(1);
