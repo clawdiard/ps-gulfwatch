@@ -332,11 +332,20 @@ document.getElementById('moon').textContent=icons[idx]+' '+names[idx];
 async function loadTides(){
 const now=new Date();
 const fmt=d=>`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+const el=document.getElementById('tides');
+let d;
 try{
 const r=await fetchWithRetry(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${fmt(now)}&end_date=${fmt(now)}&station=8726384&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json`);
-const d=await r.json();
-const el=document.getElementById('tides');
-if(d.predictions){
+d=await r.json();
+if(d.predictions&&d.predictions.length>0){try{localStorage.setItem('ps-gw-tides',JSON.stringify({ts:Date.now(),date:fmt(now),data:d}))}catch(e){}}
+}catch(fetchErr){
+console.warn('NOAA Tides API failed, checking cache',fetchErr);
+try{const cached=JSON.parse(localStorage.getItem('ps-gw-tides')||'null');
+if(cached&&cached.data&&cached.date===fmt(now)&&(Date.now()-cached.ts)<21600000){d=cached.data;console.log('Using cached tide data');}
+else{el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">Tide data temporarily unavailable</div>';return;}}
+catch(e){el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px">Tide data temporarily unavailable</div>';return;}
+}
+if(d&&d.predictions){
 d.predictions.forEach(p=>{
 const t=new Date(p.t);
 const time=t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
@@ -345,14 +354,13 @@ const cls=p.type==='H'?'high':'low';
 el.innerHTML+=`<div class="tide-row"><span class="type ${cls}">${type} Tide</span><span class="time">${time}</span><span class="height">${parseFloat(p.v).toFixed(1)} ft</span></div>`;
 });
 }
-}catch(e){console.error('Tide error',e)}
 
 // Water temp
 try{
 const r2=await fetchWithRetry(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8726384&product=water_temperature&units=english&time_zone=lst_ldt&format=json`);
 const d2=await r2.json();
 if(d2.data&&d2.data[0])document.getElementById('watertemp').textContent=Math.round(parseFloat(d2.data[0].v))+'°F';
-}catch(e){}
+}catch(e){console.warn('Water temp API failed',e);}
 }
 
 // Red Tide — Live FWC Karenia brevis data
