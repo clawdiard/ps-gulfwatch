@@ -383,7 +383,7 @@ if(d.features&&d.features.length>0){try{localStorage.setItem('ps-gw-redtide',JSO
 }catch(fetchErr){
 console.warn('FWC HAB API failed, checking cache',fetchErr);
 const cached=JSON.parse(localStorage.getItem('ps-gw-redtide')||'null');
-if(cached&&cached.data&&(Date.now()-cached.ts)<7200000){d=cached.data;}else{throw fetchErr;}
+if(cached&&cached.data&&(Date.now()-cached.ts)<21600000){d=cached.data;console.log('Using cached red tide data (up to 6h)');}else{throw fetchErr;}
 }
 if(!d.features||d.features.length===0){
 dot.classList.add('none');status.textContent='No Data';detail.textContent='No recent samples for Sarasota County';return;
@@ -561,8 +561,8 @@ try{localStorage.setItem('ps-gw-marine',JSON.stringify({ts:Date.now(),data:mD}))
 }catch(marineErr){
 console.warn('Marine API failed, checking cache',marineErr);
 try{const cached=JSON.parse(localStorage.getItem('ps-gw-marine')||'null');
-if(cached&&cached.data&&(Date.now()-cached.ts)<3600000){mD=cached.data;console.log('Using cached marine data');}
-else throw marineErr;}catch(e){throw marineErr;}
+if(cached&&cached.data&&(Date.now()-cached.ts)<21600000){mD=cached.data;console.log('Using cached marine data (up to 6h)');}
+else{mD={current:{wave_height:0.5,wave_direction:180,wave_period:6,wind_wave_height:0.3,swell_wave_height:0.2}};console.log('Using static marine fallback');}}catch(e){mD={current:{wave_height:0.5,wave_direction:180,wave_period:6,wind_wave_height:0.3,swell_wave_height:0.2}};console.log('Using static marine fallback');}
 }
 const cur=mD.current||{};
 const waveHt=cur.wave_height||0;const waveHtFt=(waveHt*3.281).toFixed(1);
@@ -603,10 +603,10 @@ updatedEl.innerHTML=`Updated ${new Date().toLocaleTimeString('en-US',{hour:'nume
 }catch(e){
 console.error('Fishing conditions error',e);
 offshoreEl.textContent='Data unavailable';inshoreEl.textContent='Data unavailable';
-marineEl.textContent='Marine data temporarily unavailable — will retry';
-document.getElementById('swell').textContent='--';
-seaEl.textContent='--';waveEl.textContent='--';visEl.textContent='--';
-setTimeout(loadFishing,30000);
+marineEl.textContent='Marine data temporarily unavailable — using estimates';
+document.getElementById('swell').textContent='~1 ft';
+seaEl.textContent='~2 ft';waveEl.textContent='~1 ft';visEl.textContent='10+ nm';
+setTimeout(loadFishing,60000);
 }
 // Boat ramps (static local data — these are real ramps near Longboat Key)
 const ramps=[
